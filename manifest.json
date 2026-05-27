@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "TEMU违规商品SPU提取助手",
+  "version": "1.5",
+  "description": "提取并处理 TEMU 违规商品的 SPU ID",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "cookies",
+    "storage",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://agentseller.temu.com/*",
+    "https://*.temu.com/*"
+  ],
+  "action": {
+    "default_title": "打开 TEMU SPU 助手"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://agentseller.temu.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}

@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TEMU SPU 助手</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --panel-soft: #eef4ff;
+      --text: #162033;
+      --subtle: #5f6f86;
+      --line: #d9e2f0;
+      --primary: #0d6efd;
+      --primary-dark: #0a58ca;
+      --danger: #dc3545;
+      --success: #1f9d55;
+      --shadow: 0 8px 24px rgba(22, 32, 51, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 640px;
+      min-height: 100vh;
+      font: 13px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(13, 110, 253, 0.14), transparent 28%),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+    }
+
+    .shell { padding: 10px; }
+    .layout { display: grid; gap: 8px; }
+
+    .hero, .card, .log-card {
+      background: var(--panel);
+      border: 1px solid rgba(217, 226, 240, 0.92);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 10px;
+      background:
+        linear-gradient(135deg, rgba(13, 110, 253, 0.1), rgba(31, 157, 85, 0.05)),
+        var(--panel);
+    }
+
+    .hero-top, .card-head, .log-head, .status-row, .dense-actions, .compact-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .hero-copy { min-width: 0; flex: 1; }
+    .title { margin: 0; font-size: 18px; line-height: 1.15; }
+    .subtitle { margin: 3px 0 0; color: var(--subtle); font-size: 12px; }
+    .toolbar, .log-actions, .action-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+    .toolbar button,
+    .log-actions button,
+    .action-row button {
+      min-height: 34px;
+    }
+
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .stat {
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(217, 226, 240, 0.95);
+      min-height: 58px;
+    }
+
+    .stat-label {
+      color: var(--subtle);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.2;
+      word-break: break-word;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--subtle);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .pill-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #f59e0b;
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+      flex: 0 0 auto;
+    }
+
+    .pill.connected .pill-dot {
+      background: var(--success);
+      box-shadow: 0 0 0 2px rgba(31, 157, 85, 0.18);
+    }
+
+    .card { padding: 10px; }
+    .card-head { align-items: flex-start; }
+    .card-title { margin: 0; font-size: 14px; line-height: 1.25; }
+    .card-note { margin: 2px 0 0; font-size: 11px; color: var(--subtle); }
+
+    .feature-tag {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--primary-dark);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .grid-two, .grid-three, .grid-four, .mini-grid {
+      display: grid;
+      gap: 8px;
+    }
+
+    .grid-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .mini-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .field-label {
+      font-size: 11px;
+      color: var(--subtle);
+      font-weight: 600;
+      line-height: 1.25;
+    }
+
+    input[type="datetime-local"], input[type="text"], textarea, select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font: inherit;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(13, 110, 253, 0.58);
+      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.12);
+    }
+
+    textarea {
+      min-height: 60px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .short-textarea { min-height: 56px; }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0 0;
+      color: var(--subtle);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .checkbox-row input { margin: 0; }
+
+    .config-box {
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 8px;
+      background: #fbfdff;
+      border: 1px solid var(--line);
+    }
+
+    .config-title {
+      margin: 0 0 6px;
+      font-size: 11px;
+      color: var(--subtle);
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .kv-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .kv-item {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 8px;
+      align-items: start;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .kv-key {
+      color: var(--subtle);
+      font-weight: 600;
+    }
+
+    .kv-value {
+      color: var(--text);
+      word-break: break-word;
+    }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+      line-height: 1.2;
+    }
+
+    button:hover:not(:disabled) { transform: translateY(-1px); }
+    button:disabled { opacity: 0.65; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .btn-primary {
+      color: #fff;
+      background: linear-gradient(135deg, var(--primary), #3b8cff);
+      box-shadow: 0 6px 16px rgba(13, 110, 253, 0.18);
+    }
+
+    .btn-secondary {
+      color: var(--primary-dark);
+      background: #eaf2ff;
+    }
+
+    .btn-danger {
+      color: #fff;
+      background: linear-gradient(135deg, var(--danger), #f45c6c);
+      box-shadow: 0 6px 16px rgba(220, 53, 69, 0.16);
+    }
+
+    .btn-success {
+      color: #fff;
+      background: linear-gradient(135deg, var(--success), #37c172);
+      box-shadow: 0 6px 16px rgba(31, 157, 85, 0.16);
+    }
+
+    .action-row {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: stretch;
+    }
+
+    .action-row.single {
+      grid-template-columns: 1fr;
+    }
+
+    .action-row.dual {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .action-row button {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .summary {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #f7faff;
+      border: 1px dashed var(--line);
+      color: var(--subtle);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .log-card { overflow: hidden; }
+    .log-head { padding: 10px 10px 0; }
+    .log-title { margin: 0; font-size: 14px; }
+
+    .log-box {
+      margin: 8px 10px 10px;
+      min-height: 150px;
+      max-height: 190px;
+      overflow: auto;
+      padding: 10px;
+      border-radius: 8px;
+      background: #101723;
+      color: #d9f7e8;
+      font: 12px/1.5 Consolas, "Courier New", monospace;
+      white-space: pre-wrap;
+    }
+
+    .log-box div + div { margin-top: 4px; }
+
+    .dense-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    @media (max-width: 820px) {
+      body { min-width: 0; }
+      .shell { padding: 8px; }
+      .hero-stats, .grid-two, .grid-three, .grid-four, .mini-grid, .action-row, .action-row.dual {
+        grid-template-columns: 1fr;
+      }
+      .hero-top, .card-head, .log-head, .status-row, .dense-actions, .compact-bar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .toolbar, .log-actions { width: 100%; }
+      .toolbar button, .log-actions button { flex: 1 1 auto; }
+      .kv-item { grid-template-columns: 1fr; gap: 2px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="layout">
+      <section class="hero">
+        <div class="hero-top">
+          <div class="hero-copy">
+            <h1 class="title">TEMU SPU 助手</h1>
+            <p class="subtitle">更紧凑地处理扫描、下架、上架、属性拒绝与属性补全。</p>
+          </div>
+          <div class="toolbar">
+            <button id="refreshBtn" class="btn-secondary">刷新界面</button>
+            <button id="checkTabBtn" class="btn-secondary">检测连接</button>
+            <button id="stopAllBtn" class="btn-secondary">停止所有任务</button>
+          </div>
+        </div>
+        <div class="hero-stats">
+          <div class="stat">
+            <div class="stat-label">连接状态</div>
+            <div class="stat-value">
+              <span id="connectionBadge" class="pill"><span class="pill-dot"></span><span id="connectionText">等待检测</span></span>
+            </div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">目标标签页</div>
+            <div class="stat-value" id="tabLabel">未绑定</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">识别到的 SPU</div>
+            <div class="stat-value" id="totalCount">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">直接上架 SPU</div>
+            <div class="stat-value" id="directCount">0</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">扫描违规商品</h2>
+            <p class="card-note">设置时间和类型后抓取 SPU，结果会同步写入列表。</p>
+          </div>
+          <span class="feature-tag">高频</span>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span class="field-label">开始时间</span>
+            <input type="datetime-local" id="startTime">
+          </label>
+          <label class="field">
+            <span class="field-label">结束时间</span>
+            <input type="datetime-local" id="endTime">
+          </label>
+        </div>
+        <div class="grid-two" style="margin-top: 8px;">
+          <label class="field">
+            <span class="field-label">违规类型</span>
+            <select id="violationType">
+              <option value="">全部类型</option>
+              <option value="1">违反禁售政策</option>
+              <option value="2">违反限售政策</option>
+              <option value="3">内容信息违规</option>
+              <option value="4">知识产权投诉</option>
+              <option value="5">知识产权违规</option>
+              <option value="6">入驻信息违规</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-label">结果列表</span>
+            <textarea id="result" class="short-textarea" placeholder="SPU ID，支持空格、逗号或换行分隔"></textarea>
+          </label>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="checkOnlyAppeal" checked>
+          仅包含可申诉相关记录
+        </label>
+        <div class="action-row">
+          <button id="extractBtn" class="btn-primary">开始扫描</button>
+          <button id="copyBtn" class="btn-secondary">复制结果</button>
+          <button id="autoProcessBtn" class="btn-danger">批量下架</button>
+        </div>
+        <div class="summary" id="scanSummary">连接到商家后台后即可开始扫描或处理。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">按 SPU 直接上架</h2>
+            <p class="card-note">跳过扫描，按输入的 SPU 列表直接发起上架。</p>
+          </div>
+          <span class="feature-tag">高频</span>
+        </div>
+        <label class="field">
+          <span class="field-label">SPU ID 列表</span>
+          <textarea id="directRelistInput" class="short-textarea" placeholder="输入一个或多个 SPU ID"></textarea>
+        </label>
+        <div class="action-row single">
+          <button id="directRelistBtn" class="btn-success">执行直接上架</button>
+        </div>
+        <div class="summary" id="directRelistSummary">输入 SPU 后可直接上架。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">属性待确认拒绝</h2>
+            <p class="card-note">按固定查询条件拉取待确认商品，并直接执行拒绝。</p>
+          </div>
+          <span class="feature-tag">高频</span>
+        </div>
+        <div class="config-box">
+          <div class="config-title">固定查询</div>
+          <div class="kv-list">
+            <div class="kv-item">
+              <div class="kv-key">propAdjustTypes</div>
+              <div class="kv-value">201, 200, 300</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-key">每页数量</div>
+              <div class="kv-value">10</div>
+            </div>
+          </div>
+        </div>
+        <div class="action-row single">
+          <button id="rejectPropertyAdjustBtn" class="btn-danger">开始拒绝</button>
+        </div>
+        <div class="summary" id="rejectPropertySummary">查到商品后直接调用拒绝接口。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">自动扫描并上架</h2>
+            <p class="card-note">读取下架商品，检查状态并自动上架可处理项。</p>
+          </div>
+          <span class="feature-tag">自动</span>
+        </div>
+        <div class="action-row single">
+          <button id="autoScanAndRelistBtn" class="btn-success">开始自动扫描并上架</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">批量删除已下架商品</h2>
+            <p class="card-note">自动查询已下架商品列表，并批量调用删除接口永久移除商品。</p>
+          </div>
+          <span class="feature-tag">删除</span>
+        </div>
+        <div class="action-row single">
+          <button id="batchDeleteOffShelfBtn" class="btn-danger">开始批量删除</button>
+        </div>
+        <div class="summary" id="batchDeleteOffShelfSummary">快速翻页删除；暂不可删商品下一轮扫描自动重试。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">束发带属性补全</h2>
+            <p class="card-note">固定类目和属性规则，批量补全缺失属性。</p>
+          </div>
+          <span class="feature-tag">补全</span>
+        </div>
+        <div class="config-box">
+          <div class="config-title">固定规则</div>
+          <div class="kv-list">
+            <div class="kv-item">
+              <div class="kv-key">固定类目</div>
+              <div class="kv-value" id="fixedCategoryLabel">束发带 (34566)</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-key">固定属性</div>
+              <div class="kv-value" id="fixedRuleLabel">材质=聚酯纤维；成分=聚酯纤维 100.00%</div>
+            </div>
+          </div>
+        </div>
+        <div class="action-row single">
+          <button id="headbandPropertyBtn" class="btn-success">开始束发带属性补全</button>
+        </div>
+        <div class="summary" id="headbandSummary">按束发带固定规则循环补全。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">桌布属性补充</h2>
+            <p class="card-note">固定桌布规则，补齐工艺和材质类型等字段。</p>
+          </div>
+          <span class="feature-tag">补全</span>
+        </div>
+        <div class="config-box">
+          <div class="config-title">固定规则</div>
+          <div class="kv-list">
+            <div class="kv-item">
+              <div class="kv-key">固定类目</div>
+              <div class="kv-value">桌布 (10498)</div>
+            </div>
+            <div class="kv-item">
+              <div class="kv-key">补充属性</div>
+              <div class="kv-value">制作工艺=印花+梭织；材质类型=纺织品材质</div>
+            </div>
+          </div>
+        </div>
+        <div class="action-row single">
+          <button id="tableclothPropertyBtn" class="btn-success">开始桌布属性补充</button>
+        </div>
+        <div class="summary" id="tableclothSummary">按桌布固定规则循环补充。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">导出备货单</h2>
+            <p class="card-note">按时间范围导出 CSV。</p>
+          </div>
+          <span class="feature-tag">导出</span>
+        </div>
+        <div class="grid-two">
+          <label class="field">
+            <span class="field-label">开始时间</span>
+            <input type="datetime-local" id="purchaseExportStartTime">
+          </label>
+          <label class="field">
+            <span class="field-label">结束时间</span>
+            <input type="datetime-local" id="purchaseExportEndTime">
+          </label>
+        </div>
+        <div class="action-row single">
+          <button id="exportPurchaseOrdersBtn" class="btn-primary">导出备货单 CSV</button>
+        </div>
+        <div class="summary" id="purchaseExportSummary">默认导出当天数据。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">导出同货号在售销量</h2>
+            <p class="card-note">扫描全部在售商品，筛出同货号但不同 SPU 的记录，并导出销量 CSV。</p>
+          </div>
+          <span class="feature-tag">导出</span>
+        </div>
+        <div class="action-row single">
+          <button id="exportDuplicateOnSaleSalesBtn" class="btn-primary">导出同货号销量 CSV</button>
+        </div>
+        <div class="summary" id="duplicateOnSaleSalesSummary">自动扫描全部在售商品并汇总销量。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">长期无单自动下架</h2>
+            <p class="card-note">扫描在售商品，若上架超过 90 天且历史订单为空，则自动调用下架接口。</p>
+          </div>
+          <span class="feature-tag">自动</span>
+        </div>
+        <div class="action-row single">
+          <button id="longTermNoOrderUnshelveBtn" class="btn-danger">开始扫描并下架</button>
+        </div>
+        <div class="summary" id="longTermNoOrderSummary">按固定规则扫描全部在售商品。</div>
+      </section>
+
+      <section class="log-card">
+        <div class="log-head">
+          <div>
+            <h2 class="log-title">任务日志</h2>
+          </div>
+          <div class="log-actions">
+            <button id="clearLogBtn" class="btn-secondary">清空日志</button>
+          </div>
+        </div>
+        <div class="log-box" id="processLog">&gt; 等待任务...</div>
+      </section>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
