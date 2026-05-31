@@ -705,13 +705,13 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (!window.confirm('确认批量删除所有已下架商品吗？此操作不可恢复，请谨慎执行。')) {
+    if (!window.confirm('确认批量删除所有已下架和核价未通过商品吗？此操作不可恢复，请谨慎执行。')) {
       return;
     }
 
     setTaskRunning('batchDeleteOffShelf', true);
-    batchDeleteOffShelfSummary.textContent = '任务进行中：正在查询并删除已下架商品...';
-    appendLog('开始批量删除已下架商品：查询 skcTopStatus=200 列表并逐个删除。');
+    batchDeleteOffShelfSummary.textContent = '任务进行中：正在查询并删除已下架 / 核价未通过商品...';
+    appendLog('开始批量删除：先删已下架（skcTopStatus=200），再删核价未通过（selectStatus=9）。');
 
     const response = await sendMessage({ action: 'startBatchDeleteOffShelf', taskName: 'batchDeleteOffShelf' });
     if (!response.success) {

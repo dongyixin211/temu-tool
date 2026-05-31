@@ -493,15 +493,15 @@
       <section class="card">
         <div class="card-head">
           <div>
-            <h2 class="card-title">批量删除已下架商品</h2>
-            <p class="card-note">自动查询已下架商品列表，并批量调用删除接口永久移除商品。</p>
+            <h2 class="card-title">批量删除已下架 / 核价未通过商品</h2>
+            <p class="card-note">先删除已下架商品，再删除核价未通过（selectStatus=9）商品，并批量调用删除接口永久移除。</p>
           </div>
           <span class="feature-tag">删除</span>
         </div>
         <div class="action-row single">
           <button id="batchDeleteOffShelfBtn" class="btn-danger">开始批量删除</button>
         </div>
-        <div class="summary" id="batchDeleteOffShelfSummary">快速翻页删除；暂不可删商品下一轮扫描自动重试。</div>
+        <div class="summary" id="batchDeleteOffShelfSummary">先删已下架，再删核价未通过；暂不可删商品下一轮扫描自动重试。</div>
       </section>
 
       <section class="card">

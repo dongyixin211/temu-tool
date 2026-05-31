@@ -675,6 +675,28 @@ async function queryOffShelfProductPage(page, pageSize, options = {}) {
   });
 }
 
+async function queryPriceReviewFailedProductPage(pageNum, pageSize, options = {}) {
+  await ensureRequestHeadersReady();
+  const rejectRequestMeta = dynamicHeaders.rejectRequestMeta || {};
+  const rawTimeoutMs = Number(options.timeoutMs);
+  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 45000;
+
+  return postJsonWithCapturedHeaders('https://agentseller.temu.com/api/kiana/mms/robin/searchForChainSupplier', {
+    pageSize: Number(pageSize || 10),
+    pageNum: Number(pageNum || 1),
+    removeStatus: 0,
+    secondarySelectStatusList: [9],
+    supplierTodoTypeList: []
+  }, {
+    ...(rejectRequestMeta.antiContent ? { 'anti-content': rejectRequestMeta.antiContent } : {}),
+    'accept-language': rejectRequestMeta.acceptLanguage || 'en-US,en;q=0.9',
+    'origin': rejectRequestMeta.origin || 'https://agentseller.temu.com',
+    'referer': rejectRequestMeta.referer || 'https://agentseller.temu.com/newon/product-select'
+  }, {
+    timeoutMs
+  });
+}
+
 function removeOffShelfProduct(productId) {
   return ensureRequestHeadersReady().then(() => {
     const rejectRequestMeta = dynamicHeaders.rejectRequestMeta || {};
@@ -693,12 +715,17 @@ function removeOffShelfProduct(productId) {
 }
 
 const DELETE_NOT_SUPPORTED_PATTERN = /does not support the operation of deletion/i;
+const DELETE_PERMANENT_BLOCK_PATTERN = /当前商品状态不可删除/;
 const DELETE_RETRY_DELAYS_MS = [400];
 const DELETE_DEFER_SKIP_SWEEPS = 1;
 const DELETE_DEFER_MAX_ATTEMPTS = 8;
 
 function isDeleteNotSupportedError(errorMsg) {
   return DELETE_NOT_SUPPORTED_PATTERN.test(String(errorMsg || ''));
+}
+
+function isDeletePermanentlyBlockedError(errorMsg) {
+  return DELETE_PERMANENT_BLOCK_PATTERN.test(String(errorMsg || ''));
 }
 
 function resolveRemoveProductError(removeRes, fallbackMessage) {
@@ -1546,51 +1573,69 @@ async function startScanAndRelistLoop(taskName) {
     clearTaskCancellation(taskName);
 }
 
-async function startBatchDeleteOffShelfLoop(taskName) {
-    clearTaskCancellation(taskName);
-    const stats = { success: 0, failed: 0, skipped: 0 };
-    const PAGE_SIZE = 100;
+async function runBatchDeleteLoop(taskName, stats, options) {
+    const {
+        label,
+        queryPage,
+        extractPageItems,
+        emptyMessage,
+        stopMessage,
+        queryFailPrefix,
+        pageSize
+    } = options;
     const DELETE_CONCURRENCY = 8;
     const deferredProducts = new Map();
     const permanentlySkippedProductIds = new Set();
     let sweepRound = 0;
     let currentPage = 1;
-    let totalRemaining = null;
+    let deleteAttemptsThisSweep = 0;
 
-    logProcess('开始批量删除已下架商品（快速翻页模式）...');
-    await ensureRequestHeadersReady();
+    logProcess(`开始批量删除${label}商品（快速翻页模式）...`);
+
+    function finishSweepIfStuck() {
+        const retryableDeferredCount = Array.from(deferredProducts.keys()).filter((productId) => {
+            return !permanentlySkippedProductIds.has(productId);
+        }).length;
+
+        if (deleteAttemptsThisSweep === 0 && retryableDeferredCount === 0) {
+            const skippedCount = permanentlySkippedProductIds.size;
+            if (skippedCount > 0) {
+                logProcess(`✅ ${label}处理完成，${skippedCount} 个商品因状态限制已跳过。`, { immediate: true });
+            } else {
+                logProcess(`✅ ${emptyMessage}`, { immediate: true });
+            }
+            return true;
+        }
+
+        return false;
+    }
 
     while (true) {
-        if (handleTaskCancellation(taskName, stats, '批量删除已下架商品任务已停止。')) {
-            return;
+        if (handleTaskCancellation(taskName, stats, stopMessage)) {
+            return 'cancelled';
         }
 
         let queryResult;
         try {
-            queryResult = await queryOffShelfProductPage(currentPage, PAGE_SIZE);
+            queryResult = await queryPage(currentPage, pageSize);
         } catch (error) {
-            logProcess(`❌ 查询已下架商品失败：${error.message}`, { immediate: true });
-            finishProcess(stats, taskName);
-            clearTaskCancellation(taskName);
-            return;
+            logProcess(`❌ ${queryFailPrefix}：${error.message}`, { immediate: true });
+            return 'error';
         }
 
         if (!queryResult || !queryResult.success) {
             const errorMsg = queryResult && queryResult.errorMsg ? queryResult.errorMsg : '未知错误';
-            logProcess(`❌ 查询已下架商品失败：${errorMsg}`, { immediate: true });
-            finishProcess(stats, taskName);
-            clearTaskCancellation(taskName);
-            return;
+            logProcess(`❌ ${queryFailPrefix}：${errorMsg}`, { immediate: true });
+            return 'error';
         }
 
         const result = queryResult.result ? queryResult.result : {};
-        const pageItems = Array.isArray(result.pageItems) ? result.pageItems : [];
+        const pageItems = extractPageItems(result);
         const total = Number(result.total || 0);
-        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-        if (totalRemaining === null) {
-            totalRemaining = total;
-            logProcess(`📊 当前已下架商品总数约 ${total} 个，共 ${totalPages} 页。`);
+        if (currentPage === 1 && sweepRound === 0) {
+            logProcess(`📊 当前${label}商品总数约 ${total} 个，共 ${totalPages} 页。`);
         }
 
         if (!pageItems.length) {
@@ -1606,15 +1651,20 @@ async function startBatchDeleteOffShelfLoop(taskName) {
             if (retryableDeferredCount > 0) {
                 sweepRound += 1;
                 currentPage = 1;
-                logProcess(`🔄 完成一轮扫描，${retryableDeferredCount} 个延迟商品进入下一轮重试（第 ${sweepRound} 轮）。`);
+                deleteAttemptsThisSweep = 0;
+                logProcess(`🔄 ${label}完成一轮扫描，${retryableDeferredCount} 个延迟商品进入下一轮重试（第 ${sweepRound} 轮）。`);
                 continue;
             }
 
-            logProcess('✅ 已下架商品已全部删除或列表为空。', { immediate: true });
+            if (finishSweepIfStuck()) {
+                break;
+            }
+
+            logProcess(`✅ ${emptyMessage}`, { immediate: true });
             break;
         }
 
-        logProcess(`📄 第 ${currentPage}/${totalPages} 页：${pageItems.length} 个商品，剩余约 ${total} 个`);
+        logProcess(`📄 ${label} 第 ${currentPage}/${totalPages} 页：${pageItems.length} 个商品，剩余约 ${total} 个`);
 
         const deleteTasks = [];
         const seenProductIds = new Set();
@@ -1645,11 +1695,15 @@ async function startBatchDeleteOffShelfLoop(taskName) {
 
         if (!deleteTasks.length) {
             if (skippedByDefer > 0) {
-                logProcess(`⏭️ 第 ${currentPage} 页商品暂跳过，立即翻页。`);
+                logProcess(`⏭️ ${label} 第 ${currentPage} 页商品暂跳过，立即翻页。`);
             }
             if (currentPage >= totalPages) {
                 sweepRound += 1;
                 currentPage = 1;
+                if (finishSweepIfStuck()) {
+                    break;
+                }
+                deleteAttemptsThisSweep = 0;
             } else {
                 currentPage += 1;
             }
@@ -1661,11 +1715,12 @@ async function startBatchDeleteOffShelfLoop(taskName) {
         let pageFailed = 0;
 
         for (let i = 0; i < deleteTasks.length; i += DELETE_CONCURRENCY) {
-            if (handleTaskCancellation(taskName, stats, '批量删除已下架商品任务已停止。')) {
-                return;
+            if (handleTaskCancellation(taskName, stats, stopMessage)) {
+                return 'cancelled';
             }
 
             const chunk = deleteTasks.slice(i, i + DELETE_CONCURRENCY);
+            deleteAttemptsThisSweep += chunk.length;
             const results = await Promise.allSettled(
                 chunk.map(({ productId }) => removeOffShelfProductWithRetry(productId))
             );
@@ -1685,6 +1740,14 @@ async function startBatchDeleteOffShelfLoop(taskName) {
                     }
 
                     const errorMsg = resolveRemoveProductError(removeRes, '未知错误');
+                    if (isDeletePermanentlyBlockedError(errorMsg)) {
+                        permanentlySkippedProductIds.add(productId);
+                        deferredProducts.delete(productId);
+                        stats.skipped += 1;
+                        logProcess(`[${productId}] ⏭️ 状态不可删，永久跳过：${shortName}`);
+                        return;
+                    }
+
                     if (isDeleteNotSupportedError(errorMsg)) {
                         const previousInfo = deferredProducts.get(productId) || { attempts: 0, skipUntilSweep: sweepRound };
                         const attempts = previousInfo.attempts + 1;
@@ -1724,7 +1787,7 @@ async function startBatchDeleteOffShelfLoop(taskName) {
         }
 
         if (pageDeferred > 0) {
-            logProcess(`⏭️ 第 ${currentPage} 页有 ${pageDeferred} 个暂不可删，已跳过并继续翻页。`);
+            logProcess(`⏭️ ${label} 第 ${currentPage} 页有 ${pageDeferred} 个暂不可删，已跳过并继续翻页。`);
         }
 
         if (pageSuccess > 0) {
@@ -1735,13 +1798,53 @@ async function startBatchDeleteOffShelfLoop(taskName) {
         if (currentPage >= totalPages) {
             sweepRound += 1;
             currentPage = 1;
+            if (finishSweepIfStuck()) {
+                break;
+            }
+            deleteAttemptsThisSweep = 0;
             if (pageDeferred > 0 && pageFailed === 0) {
-                logProcess(`🔄 本轮扫描结束，${pageDeferred} 个商品将在后续页码重试。`);
+                logProcess(`🔄 ${label}本轮扫描结束，${pageDeferred} 个商品将在后续页码重试。`);
             }
         } else {
             currentPage += 1;
         }
     }
+
+    return 'done';
+}
+
+async function startBatchDeleteOffShelfLoop(taskName) {
+    clearTaskCancellation(taskName);
+    const stats = { success: 0, failed: 0, skipped: 0 };
+    const stopMessage = '批量删除商品任务已停止。';
+
+    await ensureRequestHeadersReady();
+
+    const offShelfResult = await runBatchDeleteLoop(taskName, stats, {
+        label: '已下架',
+        pageSize: 100,
+        queryPage: queryOffShelfProductPage,
+        extractPageItems: (result) => (Array.isArray(result.pageItems) ? result.pageItems : []),
+        emptyMessage: '已下架商品已全部删除或列表为空。',
+        stopMessage,
+        queryFailPrefix: '查询已下架商品失败'
+    });
+
+    if (offShelfResult !== 'done') {
+        finishProcess(stats, taskName);
+        clearTaskCancellation(taskName);
+        return;
+    }
+
+    const priceReviewFailedResult = await runBatchDeleteLoop(taskName, stats, {
+        label: '核价未通过',
+        pageSize: 100,
+        queryPage: queryPriceReviewFailedProductPage,
+        extractPageItems: (result) => (Array.isArray(result.dataList) ? result.dataList : []),
+        emptyMessage: '核价未通过商品已全部删除或列表为空。',
+        stopMessage,
+        queryFailPrefix: '查询核价未通过商品失败'
+    });
 
     finishProcess(stats, taskName);
     clearTaskCancellation(taskName);
