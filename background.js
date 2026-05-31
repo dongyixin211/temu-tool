@@ -5,7 +5,9 @@ const CAPTURED_REQUEST_URLS = [
   'https://agentseller.temu.com/visage-agent-seller/product/prop/adjust/task/pageQuery',
   'https://agentseller.temu.com/visage-agent-seller/product/skc/pageQuery',
   'https://agentseller.temu.com/visage-agent-seller/product/remove',
-  'https://agentseller.temu.com/mms/venom/api/supplier/purchase/manager/querySubOrderList'
+  'https://agentseller.temu.com/mms/venom/api/supplier/purchase/manager/querySubOrderList',
+  'https://agentseller.temu.com/bg-luna-agent-seller/goods/quality/supplyChain/qualityMetrics/pageQuery',
+  'https://agentseller.temu.com/mms/venom/api/supplier/sales/management/listOverall'
 ];
 let latestRejectRequestMeta = null;
 
