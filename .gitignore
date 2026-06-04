@@ -1,1 +1,16 @@
+.env
+*.env
+**/.env.*
+**/config*.json
+!**/*.example.json
+__pycache__/
+node_modules/
+.venv/
+venv/
+*.sqlite
+*.csv
 .idea/
+.vscode/
+*.log
+.DS_Store
+Thumbs.db

@@ -1,7 +1,10 @@
 ﻿console.log('TEMU 违规处理助手 Content Script 已加载');
 
 let dynamicHeaders = { mallid: '', cookies: '', userAgent: navigator.userAgent, rejectRequestMeta: null };
-const TASK_NAMES = ['autoProcess', 'scanAndRelist', 'directRelist', 'propertyFill', 'tableclothPropertyFill', 'rejectPropertyAdjust', 'longTermNoOrderUnshelve', 'batchDeleteOffShelf'];
+const TASK_NAMES = ['autoProcess', 'scanAndRelist', 'directRelist', 'propertyFill', 'tableclothPropertyFill', 'rejectPropertyAdjust', 'longTermNoOrderUnshelve', 'batchDeleteOffShelf', 'lowQualityUnshelve'];
+const LOW_QUALITY_SCAN_SCORE_ENUMS = [1, 2];
+const LOW_QUALITY_UNSHELVE_SCORE_THRESHOLD = 60;
+const LOW_QUALITY_UNSHELVE_INVENTORY_THRESHOLD = 10;
 const cancelledTasks = new Set();
 const LOG_FLUSH_INTERVAL = 180;
 const LOG_IMMEDIATE_PATTERN = /失败|异常|终止|停止|完成|成功|❌|✅/;
@@ -213,6 +216,13 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     return true;
   }
 
+  if (request.action === 'queryPendingPurchaseRestockAnalysis') {
+    queryPendingPurchaseRestockAnalysis()
+      .then(data => sendResponse({ success: true, data: data }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
   // 功能2：第二步执行下架 (原有功能)
   if (request.action === 'startAutoProcess') {
     startOptimizedBatchProcess(request.spuList, request.taskName || 'autoProcess'); 
@@ -235,6 +245,12 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 
   if (request.action === 'startBatchDeleteOffShelf') {
     startBatchDeleteOffShelfLoop(request.taskName || 'batchDeleteOffShelf');
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (request.action === 'startLowQualityUnshelve') {
+    startLowQualityUnshelve(request.taskName || 'lowQualityUnshelve');
     sendResponse({ success: true });
     return true;
   }
@@ -594,13 +610,19 @@ async function queryPurchaseOrderListPage(payload) {
   const requestBody = {
     pageNo: Number(payload.pageNo || 1),
     pageSize: Number(payload.pageSize || 100),
-    urgencyType: 1,
+    urgencyType: payload.urgencyType !== undefined && payload.urgencyType !== null
+      ? Number(payload.urgencyType)
+      : 1,
     isCustomGoods: false,
-    oneDimensionSort: {
+    oneDimensionSort: payload.oneDimensionSort || {
       firstOrderByParam: 'createdAt',
       firstOrderByDesc: 1
     }
   };
+
+  if (Array.isArray(payload.statusList) && payload.statusList.length) {
+    requestBody.statusList = payload.statusList.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+  }
 
   const purchaseTimeFrom = Number(payload.purchaseTimeFrom);
   const purchaseTimeTo = Number(payload.purchaseTimeTo);
@@ -628,7 +650,9 @@ async function queryPurchaseOrderListPage(payload) {
     ...(rejectRequestMeta.antiContent ? { 'anti-content': rejectRequestMeta.antiContent } : {}),
     'accept-language': rejectRequestMeta.acceptLanguage || 'en-US,en;q=0.9',
     'origin': rejectRequestMeta.origin || 'https://agentseller.temu.com',
-    'referer': 'https://agentseller.temu.com/stock/fully-mgt/order-manage-urgency'
+    'referer': payload.referer || (Number(requestBody.urgencyType) === 0
+      ? 'https://agentseller.temu.com/stock/fully-mgt/order-manage'
+      : 'https://agentseller.temu.com/stock/fully-mgt/order-manage-urgency')
   }, {
     timeoutMs
   });
@@ -695,6 +719,406 @@ async function queryPriceReviewFailedProductPage(pageNum, pageSize, options = {}
   }, {
     timeoutMs
   });
+}
+
+async function queryQualityMetricsPage(page, pageSize, qualityScoreEnum, options = {}) {
+  await ensureRequestHeadersReady();
+  const rejectRequestMeta = dynamicHeaders.rejectRequestMeta || {};
+  const rawTimeoutMs = Number(options.timeoutMs);
+  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 45000;
+
+  return postJsonWithCapturedHeaders('https://agentseller.temu.com/bg-luna-agent-seller/goods/quality/supplyChain/qualityMetrics/pageQuery', {
+    page: Number(page || 1),
+    pageSize: Number(pageSize || 10),
+    qualityScoreEnum: Number(qualityScoreEnum || 1)
+  }, {
+    ...(rejectRequestMeta.antiContent ? { 'anti-content': rejectRequestMeta.antiContent } : {}),
+    'accept-language': rejectRequestMeta.acceptLanguage || 'en-US,en;q=0.9',
+    'origin': rejectRequestMeta.origin || 'https://agentseller.temu.com',
+    'referer': 'https://agentseller.temu.com/main/quality/dashboard'
+  }, {
+    timeoutMs
+  });
+}
+
+async function querySalesListOverallByProductId(productId, options = {}) {
+  await ensureRequestHeadersReady();
+  const rejectRequestMeta = dynamicHeaders.rejectRequestMeta || {};
+  const rawTimeoutMs = Number(options.timeoutMs);
+  const timeoutMs = Number.isFinite(rawTimeoutMs) && rawTimeoutMs > 0 ? rawTimeoutMs : 45000;
+  const normalizedProductId = Number(productId);
+
+  return postJsonWithCapturedHeaders('https://agentseller.temu.com/mms/venom/api/supplier/sales/management/listOverall', {
+    pageNo: 1,
+    pageSize: 10,
+    isLack: 0,
+    orderByParam: 'lastSevenDaysSaleVolume',
+    orderByDesc: 1,
+    productIdList: [normalizedProductId]
+  }, {
+    ...(rejectRequestMeta.antiContent ? { 'anti-content': rejectRequestMeta.antiContent } : {}),
+    'accept-language': rejectRequestMeta.acceptLanguage || 'en-US,en;q=0.9',
+    'origin': rejectRequestMeta.origin || 'https://agentseller.temu.com',
+    'referer': 'https://agentseller.temu.com/stock/fully-mgt/sale-manage/main'
+  }, {
+    timeoutMs
+  });
+}
+
+function resolveWarehouseInventoryFromListOverall(response) {
+  const result = response && response.result ? response.result : {};
+  const subOrderList = Array.isArray(result.subOrderList) ? result.subOrderList : [];
+  if (!subOrderList.length) {
+    return { inventory: 0, productSkcId: null, salesItem: null };
+  }
+
+  const salesItem = subOrderList[0];
+  const totalInfo = salesItem.skuQuantityTotalInfo || {};
+  const inventoryInfo = totalInfo.inventoryNumInfo
+    || (Array.isArray(salesItem.skuQuantityDetailList) && salesItem.skuQuantityDetailList[0]
+      ? salesItem.skuQuantityDetailList[0].inventoryNumInfo
+      : null)
+    || {};
+  const inventory = Number(inventoryInfo.warehouseInventoryNum || 0);
+
+  return {
+    inventory: Number.isFinite(inventory) ? inventory : 0,
+    productSkcId: salesItem.productSkcId || null,
+    salesItem
+  };
+}
+
+function resolveSalesMetricsFromListOverall(response) {
+  const base = resolveWarehouseInventoryFromListOverall(response);
+  const salesItem = base.salesItem;
+  if (!salesItem) {
+    return {
+      ...base,
+      lastSevenDaysSaleVolume: 0,
+      lastThirtyDaysSaleVolume: 0,
+      todaySaleVolume: 0,
+      availableSaleDays: null,
+      mark: null,
+      commentNum: null
+    };
+  }
+
+  const totalInfo = salesItem.skuQuantityTotalInfo || {};
+  const availableSaleDays = totalInfo.availableSaleDays != null
+    ? Number(totalInfo.availableSaleDays)
+    : (salesItem.availableSaleDays != null ? Number(salesItem.availableSaleDays) : null);
+
+  return {
+    ...base,
+    lastSevenDaysSaleVolume: Number(totalInfo.lastSevenDaysSaleVolume || 0),
+    lastThirtyDaysSaleVolume: Number(totalInfo.lastThirtyDaysSaleVolume || 0),
+    todaySaleVolume: Number(totalInfo.todaySaleVolume || 0),
+    availableSaleDays: Number.isFinite(availableSaleDays) ? availableSaleDays : null,
+    mark: salesItem.mark != null ? Number(salesItem.mark) : null,
+    commentNum: salesItem.commentNum != null ? Number(salesItem.commentNum) : null
+  };
+}
+
+function formatTimestampForExport(timestamp) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const pad = (num) => String(num).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function fetchAllPendingPurchaseOrders() {
+  const pageSize = 100;
+  let pageNo = 1;
+  let totalPages = 1;
+  const orders = [];
+
+  while (pageNo <= totalPages) {
+    const response = await queryPurchaseOrderListPage({
+      pageNo,
+      pageSize,
+      urgencyType: 0,
+      statusList: [1],
+      oneDimensionSort: {
+        firstOrderByParam: 'expectLatestDeliverTime',
+        firstOrderByDesc: 0
+      },
+      referer: 'https://agentseller.temu.com/stock/fully-mgt/order-manage'
+    });
+
+    if (!response || !response.success) {
+      const errorMsg = response && response.errorMsg ? response.errorMsg : '未知错误';
+      throw new Error(`待发货备货单第 ${pageNo} 页查询失败：${errorMsg}`);
+    }
+
+    const result = response.result || {};
+    const pageList = Array.isArray(result.subOrderForSupplierList) ? result.subOrderForSupplierList : [];
+    const total = Number(result.total || 0);
+    totalPages = Math.max(1, Math.ceil(total / pageSize));
+    orders.push(...pageList);
+    pageNo += 1;
+
+    if (pageList.length) {
+      await sleep(150);
+    }
+  }
+
+  return orders;
+}
+
+async function fetchQualityMetricsMapForProducts(productIdSet) {
+  const map = new Map();
+  if (!productIdSet || !productIdSet.size) {
+    return map;
+  }
+
+  for (const qualityScoreEnum of [1, 2, 3, 4]) {
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      const response = await queryQualityMetricsPage(page, 100, qualityScoreEnum);
+      if (!response || !response.success) {
+        break;
+      }
+
+      const result = response.result || {};
+      const pageItems = Array.isArray(result.pageItems) ? result.pageItems : [];
+      totalPages = Math.max(1, Math.ceil(Number(result.total || 0) / 100));
+
+      pageItems.forEach((item) => {
+        const productId = item && item.productId ? String(item.productId) : '';
+        if (productId && productIdSet.has(productId) && !map.has(productId)) {
+          map.set(productId, item);
+        }
+      });
+
+      if (map.size >= productIdSet.size) {
+        return map;
+      }
+
+      page += 1;
+      if (pageItems.length) {
+        await sleep(120);
+      }
+    }
+  }
+
+  return map;
+}
+
+function buildRestockAdvice(record) {
+  const qualityScore = Number(record.qualityScore);
+  const inventory = Number(record.warehouseInventory);
+  const last7 = Number(record.lastSevenDaysSaleVolume);
+  const avgReview = Number(record.avgReviewScore);
+  const revCnt = Number(record.reviewCount);
+  const purchaseQty = Number(record.purchaseQuantity);
+  const saleDays = record.availableSaleDays != null ? Number(record.availableSaleDays) : null;
+
+  if (Number.isFinite(qualityScore) && qualityScore < 60) {
+    return '不建议备货（品质分低于60）';
+  }
+  if (Number.isFinite(avgReview) && revCnt >= 5 && avgReview < 4.0) {
+    return '不建议备货（评价偏低）';
+  }
+  if (inventory >= 30 && last7 <= 5) {
+    return '不建议备货（仓内库存高且近7天销量低）';
+  }
+  if (saleDays != null && saleDays >= 15 && last7 < purchaseQty) {
+    return '谨慎备货（可售天数较充足）';
+  }
+  if (last7 >= 10 && inventory < 30) {
+    return '建议备货';
+  }
+  if (Number.isFinite(qualityScore) && qualityScore >= 70 && last7 >= 3) {
+    return '建议备货';
+  }
+  if (last7 === 0 && inventory >= 10) {
+    return '谨慎备货（近7天无销量）';
+  }
+  return '待观察';
+}
+
+async function queryPendingPurchaseRestockAnalysis() {
+  await ensureRequestHeadersReady();
+
+  const pendingOrders = await fetchAllPendingPurchaseOrders();
+  const productIdSet = new Set(
+    pendingOrders
+      .map((order) => (order && order.productId ? String(order.productId) : ''))
+      .filter(Boolean)
+  );
+  const qualityMap = await fetchQualityMetricsMapForProducts(productIdSet);
+  const salesCache = new Map();
+  const records = [];
+
+  for (const order of pendingOrders) {
+    const productId = order && order.productId ? String(order.productId) : '';
+    if (!productId) {
+      continue;
+    }
+
+    let salesMetrics;
+    if (salesCache.has(productId)) {
+      salesMetrics = salesCache.get(productId);
+    } else {
+      try {
+        const salesResponse = await querySalesListOverallByProductId(productId);
+        salesMetrics = salesResponse && salesResponse.success
+          ? resolveSalesMetricsFromListOverall(salesResponse)
+          : {
+            inventory: '',
+            lastSevenDaysSaleVolume: '',
+            lastThirtyDaysSaleVolume: '',
+            todaySaleVolume: '',
+            availableSaleDays: '',
+            mark: '',
+            commentNum: ''
+          };
+      } catch (error) {
+        salesMetrics = {
+          inventory: '',
+          lastSevenDaysSaleVolume: '',
+          lastThirtyDaysSaleVolume: '',
+          todaySaleVolume: '',
+          availableSaleDays: '',
+          mark: '',
+          commentNum: '',
+          error: error.message
+        };
+      }
+      salesCache.set(productId, salesMetrics);
+      await sleep(120);
+    }
+
+    const qualityItem = qualityMap.get(productId) || null;
+    const qualityScore = qualityItem && qualityItem.goodsAfsScore != null
+      ? Number(qualityItem.goodsAfsScore)
+      : null;
+    const avgReviewScore = qualityItem && qualityItem.avgRevScr != null
+      ? Number(qualityItem.avgRevScr)
+      : (salesMetrics.mark != null && salesMetrics.mark !== '' ? Number(salesMetrics.mark) : null);
+    const reviewCount = qualityItem && qualityItem.revCnt != null
+      ? Number(qualityItem.revCnt)
+      : (salesMetrics.commentNum != null && salesMetrics.commentNum !== '' ? Number(salesMetrics.commentNum) : null);
+    const purchaseQuantity = Number(order.skuQuantityTotalInfo && order.skuQuantityTotalInfo.purchaseQuantity);
+    const expectDeliverTime = order.expectLatestDeliverTime && order.expectLatestDeliverTime.time
+      ? Number(order.expectLatestDeliverTime.time)
+      : (order.deliverInfo && order.deliverInfo.expectLatestDeliverTimeOrDefault
+        ? Number(order.deliverInfo.expectLatestDeliverTimeOrDefault)
+        : null);
+
+    const record = {
+      subPurchaseOrderSn: order.subPurchaseOrderSn || '',
+      originalPurchaseOrderSn: order.originalPurchaseOrderSn || '',
+      productId,
+      productSkcId: order.productSkcId ? String(order.productSkcId) : '',
+      productSn: order.productSn || '',
+      category: order.category || '',
+      productName: order.productName || '',
+      purchaseQuantity: Number.isFinite(purchaseQuantity) ? purchaseQuantity : '',
+      expectLatestDeliverTime: formatTimestampForExport(expectDeliverTime),
+      todayCanDeliver: order.todayCanDeliver === true ? '是' : (order.todayCanDeliver === false ? '否' : ''),
+      warehouseInventory: salesMetrics.inventory === '' ? '' : salesMetrics.inventory,
+      lastSevenDaysSaleVolume: salesMetrics.lastSevenDaysSaleVolume === '' ? '' : salesMetrics.lastSevenDaysSaleVolume,
+      lastThirtyDaysSaleVolume: salesMetrics.lastThirtyDaysSaleVolume === '' ? '' : salesMetrics.lastThirtyDaysSaleVolume,
+      todaySaleVolume: salesMetrics.todaySaleVolume === '' ? '' : salesMetrics.todaySaleVolume,
+      availableSaleDays: salesMetrics.availableSaleDays === '' || salesMetrics.availableSaleDays == null
+        ? ''
+        : salesMetrics.availableSaleDays,
+      qualityScore: Number.isFinite(qualityScore) ? qualityScore.toFixed(2) : '',
+      avgReviewScore: Number.isFinite(avgReviewScore) ? avgReviewScore.toFixed(2) : '',
+      reviewCount: Number.isFinite(reviewCount) ? reviewCount : '',
+      restockAdvice: '',
+      note: salesMetrics.error || ''
+    };
+
+    record.restockAdvice = buildRestockAdvice(record);
+    records.push(record);
+  }
+
+  const adviceSummary = records.reduce((acc, item) => {
+    const key = item.restockAdvice || '待观察';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    totalOrders: records.length,
+    uniqueProducts: productIdSet.size,
+    adviceSummary,
+    records
+  };
+}
+
+function buildUnshelveInfoFromQualityItem(qualityItem, inventoryInfo) {
+  const productId = qualityItem && qualityItem.productId ? String(qualityItem.productId) : '';
+  const productSkcId = inventoryInfo && inventoryInfo.productSkcId ? Number(inventoryInfo.productSkcId) : 0;
+  if (!productId || !Number.isFinite(productSkcId) || productSkcId <= 0) {
+    return null;
+  }
+
+  return {
+    isOnSale: true,
+    spuId: productId,
+    skcId: productSkcId,
+    name: qualityItem && qualityItem.productName ? qualityItem.productName : 'Product',
+    img: qualityItem && qualityItem.carouselImageUrl ? qualityItem.carouselImageUrl : ''
+  };
+}
+
+async function fetchAllLowQualityProducts(taskName) {
+  const pageSize = 100;
+  const productMap = new Map();
+
+  for (const qualityScoreEnum of LOW_QUALITY_SCAN_SCORE_ENUMS) {
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages) {
+      if (isTaskCancelled(taskName)) {
+        return null;
+      }
+
+      let response;
+      try {
+        response = await queryQualityMetricsPage(page, pageSize, qualityScoreEnum);
+      } catch (error) {
+        throw new Error(`品质分区间 ${qualityScoreEnum} 第 ${page} 页查询失败：${error.message}`);
+      }
+
+      if (!response || !response.success) {
+        const errorMsg = response && response.errorMsg ? response.errorMsg : '未知错误';
+        throw new Error(`品质分区间 ${qualityScoreEnum} 第 ${page} 页查询失败：${errorMsg}`);
+      }
+
+      const result = response.result || {};
+      const pageItems = Array.isArray(result.pageItems) ? result.pageItems : [];
+      const total = Number(result.total || 0);
+      totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+      pageItems.forEach((item) => {
+        const productId = item && item.productId ? String(item.productId) : '';
+        if (productId) {
+          productMap.set(productId, item);
+        }
+      });
+
+      logProcess(`品质分区间 ${qualityScoreEnum}：第 ${page}/${totalPages} 页，新增 ${pageItems.length} 条，累计 ${productMap.size} 条`);
+      page += 1;
+      if (pageItems.length) {
+        await sleep(200);
+      }
+    }
+  }
+
+  return Array.from(productMap.values());
 }
 
 function removeOffShelfProduct(productId) {
@@ -1370,6 +1794,9 @@ async function startOptimizedBatchProcess(spuList, taskName) {
   clearTaskCancellation(taskName);
   const stats = { success: 0, failed: 0, skipped: 0 };
   let parentMsgId;
+
+  await ensureRequestHeadersReady();
+  const mallid = dynamicHeaders.mallid;
   
   try {
     parentMsgId = await getLatestChatMsgId();
@@ -1389,27 +1816,38 @@ async function startOptimizedBatchProcess(spuList, taskName) {
     
     const promises = chunk.map(async (spuId, idx) => {
       const globalIdx = i + idx + 1;
+      const normalizedSpuId = String(spuId || '').trim();
       try {
-        // Step 1: 查状态 (Status 12 在售)
-        const status = await checkProductStatusForUnshelve(spuId);
-        
-        if (true) {
-           // Step 2: 下架
-           const res = await unshelveProduct(status, parentMsgId);
-           if (true) {
-             stats.success++;
-             logProcess(`[${globalIdx}] ${spuId} ✅ 下架成功`);
-           } else {
-             stats.failed++;
-             logProcess(`[${globalIdx}] ${spuId} ❌ 下架失败: ${res.msg}`, { immediate: true });
-           }
+        if (await TemuShopRecords.isSpuUnshelveRecorded(mallid, normalizedSpuId)) {
+          stats.skipped += 1;
+          logProcess(`[${globalIdx}] ${normalizedSpuId} 跳过 (本店已下架记录)`);
+          return;
+        }
+
+        const status = await checkProductStatusForUnshelve(normalizedSpuId);
+
+        if (!status.isOnSale) {
+          stats.skipped += 1;
+          logProcess(`[${globalIdx}] ${normalizedSpuId} 跳过 (不在售)`);
+          return;
+        }
+
+        const res = await unshelveProduct(status, parentMsgId);
+        if (res && res.success) {
+          await TemuShopRecords.recordUnshelvedProduct(mallid, {
+            spuId: normalizedSpuId,
+            name: status.name || '',
+            source: 'autoProcess'
+          });
+          stats.success += 1;
+          logProcess(`[${globalIdx}] ${normalizedSpuId} ✅ 下架成功`);
         } else {
-           stats.skipped++;
-           logProcess(`[${globalIdx}] ${spuId} 跳过 (不在售)`);
+          stats.failed += 1;
+          logProcess(`[${globalIdx}] ${normalizedSpuId} ❌ 下架失败: ${res && res.msg ? res.msg : '未知错误'}`, { immediate: true });
         }
       } catch (err) {
-        stats.failed++;
-        logProcess(`[${globalIdx}] ${spuId} 异常`, { immediate: true });
+        stats.failed += 1;
+        logProcess(`[${globalIdx}] ${normalizedSpuId} 异常: ${err.message}`, { immediate: true });
       }
     });
 
@@ -2034,6 +2472,11 @@ async function startLongTermNoOrderUnshelve(taskName) {
 
             const unshelveResult = await unshelveProduct(unshelveInfo, parentMsgId);
             if (unshelveResult && unshelveResult.success) {
+                await TemuShopRecords.recordUnshelvedProduct(dynamicHeaders.mallid, {
+                    spuId: productId,
+                    name: unshelveInfo.name || '',
+                    source: 'longTermNoOrderUnshelve'
+                });
                 stats.success++;
                 logProcess(`[${productId}] ✅ 已下架：上架 ${listedDays} 天且从未出单`);
             } else {
@@ -2050,6 +2493,166 @@ async function startLongTermNoOrderUnshelve(taskName) {
     }
 
     finishProcess(stats, taskName);
+    clearTaskCancellation(taskName);
+}
+
+async function startLowQualityUnshelve(taskName) {
+    clearTaskCancellation(taskName);
+    const stats = { success: 0, failed: 0, skipped: 0 };
+    const exportRecords = [];
+    let parentMsgId = null;
+
+    await ensureRequestHeadersReady();
+    const mallid = dynamicHeaders.mallid;
+
+    try {
+        parentMsgId = await getLatestChatMsgId();
+        logProcess(`会话ID获取成功: ${parentMsgId}`);
+    } catch (error) {
+        logProcess(`❌ 无法获取会话ID: ${error.message}，任务终止`, { immediate: true });
+        finishProcess({ ...stats, exportRecords }, taskName);
+        clearTaskCancellation(taskName);
+        return;
+    }
+
+    logProcess('开始扫描品质分低于 70 分的商品...');
+    let qualityItems;
+    try {
+        qualityItems = await fetchAllLowQualityProducts(taskName);
+    } catch (error) {
+        logProcess(`❌ ${error.message}`, { immediate: true });
+        finishProcess({ ...stats, exportRecords }, taskName);
+        clearTaskCancellation(taskName);
+        return;
+    }
+
+    if (qualityItems === null) {
+        handleTaskCancellation(taskName, stats, '低品质商品下架任务已停止。');
+        return;
+    }
+
+    logProcess(`共扫描到 ${qualityItems.length} 个品质分低于 70 分的商品，开始检查库存并处理...`);
+
+    for (const item of qualityItems) {
+        if (handleTaskCancellation(taskName, stats, '低品质商品下架任务已停止。')) {
+            return;
+        }
+
+        const productId = item && item.productId ? String(item.productId) : '';
+        const qualityScore = Number(item && item.goodsAfsScore);
+        const shortName = item && item.productName
+            ? (item.productName.length > 30 ? `${item.productName.slice(0, 30)}...` : item.productName)
+            : 'Product';
+
+        const baseRecord = {
+            productId,
+            productName: item && item.productName ? item.productName : '',
+            categoryName: item && item.categoryName ? item.categoryName : '',
+            qualityScore: Number.isFinite(qualityScore) ? qualityScore.toFixed(2) : '',
+            warehouseInventory: '',
+            action: '跳过',
+            note: ''
+        };
+
+        if (!productId) {
+            stats.skipped += 1;
+            baseRecord.note = '缺少 productId';
+            exportRecords.push(baseRecord);
+            continue;
+        }
+
+        if (await TemuShopRecords.isSpuUnshelveRecorded(mallid, productId)) {
+            stats.skipped += 1;
+            baseRecord.note = '本店已下架记录';
+            exportRecords.push(baseRecord);
+            logProcess(`[${productId}] 跳过 (本店已下架记录)`);
+            continue;
+        }
+
+        if (!Number.isFinite(qualityScore) || qualityScore >= LOW_QUALITY_UNSHELVE_SCORE_THRESHOLD) {
+            stats.skipped += 1;
+            baseRecord.action = '仅导出';
+            baseRecord.note = '品质分不低于 60';
+            exportRecords.push(baseRecord);
+            continue;
+        }
+
+        let salesResponse;
+        try {
+            salesResponse = await querySalesListOverallByProductId(productId);
+        } catch (error) {
+            stats.failed += 1;
+            baseRecord.action = '失败';
+            baseRecord.note = `库存查询异常：${error.message}`;
+            exportRecords.push(baseRecord);
+            logProcess(`[${productId}] 库存查询异常：${error.message}`, { immediate: true });
+            continue;
+        }
+
+        if (!salesResponse || !salesResponse.success) {
+            stats.failed += 1;
+            const errorMsg = salesResponse && salesResponse.errorMsg ? salesResponse.errorMsg : '未知错误';
+            baseRecord.action = '失败';
+            baseRecord.note = `库存查询失败：${errorMsg}`;
+            exportRecords.push(baseRecord);
+            logProcess(`[${productId}] 库存查询失败：${errorMsg}`, { immediate: true });
+            continue;
+        }
+
+        const inventoryInfo = resolveWarehouseInventoryFromListOverall(salesResponse);
+        baseRecord.warehouseInventory = String(inventoryInfo.inventory);
+
+        if (inventoryInfo.inventory >= LOW_QUALITY_UNSHELVE_INVENTORY_THRESHOLD) {
+            stats.skipped += 1;
+            baseRecord.note = `库存 ${inventoryInfo.inventory} >= ${LOW_QUALITY_UNSHELVE_INVENTORY_THRESHOLD}`;
+            exportRecords.push(baseRecord);
+            logProcess(`[${productId}] 跳过：品质分 ${qualityScore.toFixed(2)}，库存 ${inventoryInfo.inventory}`);
+            continue;
+        }
+
+        let unshelveInfo = buildUnshelveInfoFromQualityItem(item, inventoryInfo);
+        if (!unshelveInfo) {
+            const status = await checkProductStatusForUnshelve(productId);
+            if (status.isOnSale && status.skcId) {
+                unshelveInfo = status;
+            }
+        }
+
+        if (!unshelveInfo || !unshelveInfo.skcId) {
+            stats.failed += 1;
+            baseRecord.action = '失败';
+            baseRecord.note = '无法构造下架信息';
+            exportRecords.push(baseRecord);
+            logProcess(`[${productId}] 下架失败：无法构造下架信息`, { immediate: true });
+            continue;
+        }
+
+        const unshelveResult = await unshelveProduct(unshelveInfo, parentMsgId);
+        if (unshelveResult && unshelveResult.success) {
+            await TemuShopRecords.recordUnshelvedProduct(mallid, {
+                spuId: productId,
+                name: unshelveInfo.name || '',
+                source: 'lowQualityUnshelve'
+            });
+            stats.success += 1;
+            baseRecord.action = '下架成功';
+            baseRecord.note = `品质分 ${qualityScore.toFixed(2)}，库存 ${inventoryInfo.inventory}`;
+            exportRecords.push(baseRecord);
+            logProcess(`[${productId}] ✅ 下架成功：${shortName}（品质分 ${qualityScore.toFixed(2)}，库存 ${inventoryInfo.inventory}）`);
+        } else {
+            stats.failed += 1;
+            const errorMsg = unshelveResult && unshelveResult.msg ? unshelveResult.msg : '未知错误';
+            baseRecord.action = '下架失败';
+            baseRecord.note = errorMsg;
+            exportRecords.push(baseRecord);
+            logProcess(`[${productId}] ❌ 下架失败：${errorMsg}`, { immediate: true });
+        }
+
+        await sleep(300);
+    }
+
+    logProcess(`低品质商品处理完成：下架 ${stats.success}，失败 ${stats.failed}，跳过 ${stats.skipped}，导出 ${exportRecords.length} 条`, { immediate: true });
+    finishProcess({ ...stats, exportRecords }, taskName);
     clearTaskCancellation(taskName);
 }
 

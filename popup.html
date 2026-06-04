@@ -418,7 +418,7 @@
         <div class="card-head">
           <div>
             <h2 class="card-title">扫描违规商品</h2>
-            <p class="card-note">设置时间和类型后抓取 SPU，结果会同步写入列表。</p>
+            <p class="card-note">设置时间和类型后抓取 SPU；本店已下架记录会自动跳过，按店铺隔离存储。</p>
           </div>
           <span class="feature-tag">高频</span>
         </div>
@@ -454,6 +454,14 @@
           <input type="checkbox" id="checkOnlyAppeal" checked>
           仅包含可申诉相关记录
         </label>
+        <label class="checkbox-row">
+          <input type="checkbox" id="skipRecordedUnshelve" checked>
+          扫描/下架时跳过本店已记录的下架商品
+        </label>
+        <div class="compact-bar" style="margin-top: 8px;">
+          <div class="summary" id="unshelveRecordSummary">当前店铺：- | 已记录下架：0 个</div>
+          <button id="clearUnshelveRecordsBtn" class="btn-secondary" type="button">清空本店记录</button>
+        </div>
         <div class="action-row">
           <button id="extractBtn" class="btn-primary">开始扫描</button>
           <button id="copyBtn" class="btn-secondary">复制结果</button>
@@ -615,6 +623,20 @@
       <section class="card">
         <div class="card-head">
           <div>
+            <h2 class="card-title">待发货备货单分析</h2>
+            <p class="card-note">汇总待发货普通备货单的近7天销量、仓内库存、品质分、评价分，并给出备货建议。</p>
+          </div>
+          <span class="feature-tag">分析</span>
+        </div>
+        <div class="action-row single">
+          <button id="analyzePendingPurchaseBtn" class="btn-primary">分析并导出 CSV</button>
+        </div>
+        <div class="summary" id="pendingPurchaseAnalysisSummary">查询 status=1 的普通备货单，并结合销售与品质数据给出建议。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
             <h2 class="card-title">导出同货号在售销量</h2>
             <p class="card-note">扫描全部在售商品，筛出同货号但不同 SPU 的记录，并导出销量 CSV。</p>
           </div>
@@ -624,6 +646,20 @@
           <button id="exportDuplicateOnSaleSalesBtn" class="btn-primary">导出同货号销量 CSV</button>
         </div>
         <div class="summary" id="duplicateOnSaleSalesSummary">自动扫描全部在售商品并汇总销量。</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h2 class="card-title">低品质商品导出并下架</h2>
+            <p class="card-note">扫描品质分低于 70 分的商品；品质分低于 60 且仓内库存小于 10 时自动下架，并导出 CSV。</p>
+          </div>
+          <span class="feature-tag">品质</span>
+        </div>
+        <div class="action-row single">
+          <button id="lowQualityUnshelveBtn" class="btn-danger">开始扫描并下架</button>
+        </div>
+        <div class="summary" id="lowQualityUnshelveSummary">下架成功后会写入本店下架记录，后续违规处理可自动跳过。</div>
       </section>
 
       <section class="card">
@@ -653,6 +689,7 @@
       </section>
     </div>
   </div>
+  <script src="shopRecords.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -38,6 +38,7 @@
         "https://agentseller.temu.com/*"
       ],
       "js": [
+        "shopRecords.js",
         "content.js"
       ],
       "run_at": "document_end"
