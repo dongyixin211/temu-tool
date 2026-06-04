@@ -1,0 +1,37 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="6" y="6" width="116" height="116" rx="29" fill="url(#bg)"/>
+  <path d="M18 96C40 111 74 116 107 92V112C107 117.523 102.523 122 97 122H35C18.984 122 6 109.016 6 93V64C8.628 77.419 12.292 88.563 18 96Z" fill="#B91C1C" opacity=".18"/>
+  <path d="M29 47.5C29 43.082 32.582 39.5 37 39.5H91C95.418 39.5 99 43.082 99 47.5V100C99 104.418 95.418 108 91 108H37C32.582 108 29 104.418 29 100V47.5Z" fill="url(#bag)" filter="url(#softShadow)"/>
+  <path d="M45 43C45 31.402 53.059 23 64 23C74.941 23 83 31.402 83 43" stroke="#FFF7ED" stroke-width="9" stroke-linecap="round"/>
+  <path d="M45 43C45 31.402 53.059 23 64 23C74.941 23 83 31.402 83 43" stroke="#C2410C" stroke-width="4" stroke-linecap="round" opacity=".28"/>
+  <path d="M44 65H76" stroke="#7C2D12" stroke-width="7" stroke-linecap="round"/>
+  <path d="M44 82H66" stroke="#9A3412" stroke-width="7" stroke-linecap="round" opacity=".72"/>
+  <path d="M84 56.5C92.56 56.5 99.5 63.44 99.5 72C99.5 80.56 92.56 87.5 84 87.5C75.44 87.5 68.5 80.56 68.5 72C68.5 63.44 75.44 56.5 84 56.5Z" fill="#0F172A" opacity=".1"/>
+  <path d="M82.5 56C91.06 56 98 62.94 98 71.5C98 80.06 91.06 87 82.5 87C73.94 87 67 80.06 67 71.5C67 62.94 73.94 56 82.5 56Z" fill="#FFFFFF" stroke="#FDBA74" stroke-width="4"/>
+  <path d="M92 81L101 90" stroke="#7C2D12" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="88" cy="89" r="22" fill="url(#badge)" stroke="#FFF7ED" stroke-width="5" filter="url(#badgeShadow)"/>
+  <path d="M77.5 88.5L84.5 95.5L99 80" stroke="#FFFFFF" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M28 25C37.466 16.216 50.134 11 64 11C91.614 11 114 33.386 114 61C114 67.068 112.919 72.884 110.94 78.264" stroke="#FFF7ED" stroke-width="4" stroke-linecap="round" opacity=".25"/>
+  <defs>
+    <linearGradient id="bg" x1="13" y1="13" x2="116" y2="116" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD166"/>
+      <stop offset=".5" stop-color="#FB6B21"/>
+      <stop offset="1" stop-color="#DC2626"/>
+    </linearGradient>
+    <linearGradient id="bag" x1="36" y1="44" x2="96" y2="105" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset=".58" stop-color="#FFF3E0"/>
+      <stop offset="1" stop-color="#FED7AA"/>
+    </linearGradient>
+    <linearGradient id="badge" x1="72" y1="73" x2="104" y2="106" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#15803D"/>
+    </linearGradient>
+    <filter id="softShadow" x="17" y="30" width="94" height="91" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#7C2D12" flood-opacity=".22"/>
+    </filter>
+    <filter id="badgeShadow" x="58" y="61" width="60" height="60" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#14532D" flood-opacity=".24"/>
+    </filter>
+  </defs>
+</svg>

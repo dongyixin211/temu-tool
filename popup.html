@@ -6,17 +6,20 @@
   <title>TEMU SPU 助手</title>
   <style>
     :root {
-      --bg: #f4f7fb;
+      --bg: #f6f8fb;
       --panel: #ffffff;
-      --panel-soft: #eef4ff;
-      --text: #162033;
-      --subtle: #5f6f86;
-      --line: #d9e2f0;
-      --primary: #0d6efd;
-      --primary-dark: #0a58ca;
-      --danger: #dc3545;
-      --success: #1f9d55;
-      --shadow: 0 8px 24px rgba(22, 32, 51, 0.08);
+      --panel-soft: #f3f6fb;
+      --text: #172033;
+      --subtle: #647083;
+      --muted: #8a95a6;
+      --line: #dde4ee;
+      --line-strong: #c9d3df;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --danger: #d92d20;
+      --success: #188a48;
+      --warning: #c26a12;
+      --shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
     }
 
     * { box-sizing: border-box; }
@@ -25,28 +28,34 @@
       margin: 0;
       min-width: 640px;
       min-height: 100vh;
-      font: 13px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
       color: var(--text);
-      background:
-        radial-gradient(circle at top right, rgba(13, 110, 253, 0.14), transparent 28%),
-        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      background: var(--bg);
     }
 
-    .shell { padding: 10px; }
-    .layout { display: grid; gap: 8px; }
+    .shell {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 10px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
 
     .hero, .card, .log-card {
       background: var(--panel);
-      border: 1px solid rgba(217, 226, 240, 0.92);
+      border: 1px solid var(--line);
       border-radius: 8px;
       box-shadow: var(--shadow);
     }
 
     .hero {
+      grid-column: 1 / -1;
       padding: 10px;
-      background:
-        linear-gradient(135deg, rgba(13, 110, 253, 0.1), rgba(31, 157, 85, 0.05)),
-        var(--panel);
+      border-color: var(--line-strong);
     }
 
     .hero-top, .card-head, .log-head, .status-row, .dense-actions, .compact-bar {
@@ -57,15 +66,31 @@
       flex-wrap: wrap;
     }
 
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .app-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      flex: 0 0 auto;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.12);
+    }
+
     .hero-copy { min-width: 0; flex: 1; }
-    .title { margin: 0; font-size: 18px; line-height: 1.15; }
-    .subtitle { margin: 3px 0 0; color: var(--subtle); font-size: 12px; }
+    .title { margin: 0; font-size: 17px; line-height: 1.2; }
+    .subtitle { margin: 2px 0 0; color: var(--subtle); font-size: 12px; }
     .toolbar, .log-actions, .action-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
     .toolbar button,
     .log-actions button,
     .action-row button {
-      min-height: 34px;
+      min-height: 32px;
     }
 
     .hero-stats {
@@ -76,21 +101,21 @@
     }
 
     .stat {
-      padding: 8px 10px;
+      padding: 7px 9px;
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.88);
-      border: 1px solid rgba(217, 226, 240, 0.95);
-      min-height: 58px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      min-height: 54px;
     }
 
     .stat-label {
-      color: var(--subtle);
+      color: var(--muted);
       font-size: 11px;
       margin-bottom: 4px;
     }
 
     .stat-value {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
       line-height: 1.2;
       word-break: break-word;
@@ -103,7 +128,7 @@
       padding: 4px 8px;
       border-radius: 999px;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.9);
+      background: #fff;
       color: var(--subtle);
       font-size: 11px;
       font-weight: 700;
@@ -114,17 +139,16 @@
       width: 7px;
       height: 7px;
       border-radius: 50%;
-      background: #f59e0b;
-      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+      background: var(--warning);
       flex: 0 0 auto;
     }
 
     .pill.connected .pill-dot {
       background: var(--success);
-      box-shadow: 0 0 0 2px rgba(31, 157, 85, 0.18);
     }
 
     .card { padding: 10px; }
+    .card-wide { grid-column: 1 / -1; }
     .card-head { align-items: flex-start; }
     .card-title { margin: 0; font-size: 14px; line-height: 1.25; }
     .card-note { margin: 2px 0 0; font-size: 11px; color: var(--subtle); }
@@ -133,7 +157,8 @@
       padding: 3px 7px;
       border-radius: 999px;
       background: var(--panel-soft);
-      color: var(--primary-dark);
+      border: 1px solid var(--line);
+      color: var(--subtle);
       font-size: 11px;
       font-weight: 700;
       white-space: nowrap;
@@ -164,7 +189,7 @@
 
     input[type="datetime-local"], input[type="text"], textarea, select {
       width: 100%;
-      padding: 8px 10px;
+      padding: 7px 9px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
@@ -176,7 +201,7 @@
 
     input:focus, select:focus, textarea:focus {
       border-color: rgba(13, 110, 253, 0.58);
-      box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.12);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
     }
 
     textarea {
@@ -185,7 +210,7 @@
       line-height: 1.45;
     }
 
-    .short-textarea { min-height: 56px; }
+    .short-textarea { min-height: 50px; }
 
     .checkbox-row {
       display: flex;
@@ -203,16 +228,15 @@
       margin-top: 8px;
       padding: 8px;
       border-radius: 8px;
-      background: #fbfdff;
+      background: var(--panel-soft);
       border: 1px solid var(--line);
     }
 
     .config-title {
       margin: 0 0 6px;
       font-size: 11px;
-      color: var(--subtle);
+      color: var(--muted);
       font-weight: 700;
-      text-transform: uppercase;
     }
 
     .kv-list {
@@ -242,38 +266,36 @@
     button {
       border: none;
       border-radius: 8px;
-      padding: 8px 12px;
+      padding: 8px 10px;
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
-      transition: transform 0.18s, box-shadow 0.18s, background 0.18s;
+      transition: border-color 0.18s, background 0.18s, color 0.18s;
       line-height: 1.2;
     }
 
-    button:hover:not(:disabled) { transform: translateY(-1px); }
-    button:disabled { opacity: 0.65; cursor: not-allowed; transform: none; box-shadow: none; }
+    button:hover:not(:disabled) { filter: brightness(0.98); }
+    button:disabled { opacity: 0.65; cursor: not-allowed; box-shadow: none; }
 
     .btn-primary {
       color: #fff;
-      background: linear-gradient(135deg, var(--primary), #3b8cff);
-      box-shadow: 0 6px 16px rgba(13, 110, 253, 0.18);
+      background: var(--primary);
     }
 
     .btn-secondary {
       color: var(--primary-dark);
-      background: #eaf2ff;
+      background: #eef4ff;
+      border: 1px solid #d8e6ff;
     }
 
     .btn-danger {
       color: #fff;
-      background: linear-gradient(135deg, var(--danger), #f45c6c);
-      box-shadow: 0 6px 16px rgba(220, 53, 69, 0.16);
+      background: var(--danger);
     }
 
     .btn-success {
       color: #fff;
-      background: linear-gradient(135deg, var(--success), #37c172);
-      box-shadow: 0 6px 16px rgba(31, 157, 85, 0.16);
+      background: var(--success);
     }
 
     .action-row {
@@ -298,16 +320,19 @@
 
     .summary {
       margin-top: 8px;
-      padding: 8px 10px;
+      padding: 7px 9px;
       border-radius: 8px;
-      background: #f7faff;
-      border: 1px dashed var(--line);
+      background: #fafcff;
+      border: 1px solid var(--line);
       color: var(--subtle);
       font-size: 12px;
       line-height: 1.35;
     }
 
-    .log-card { overflow: hidden; }
+    .log-card {
+      grid-column: 1 / -1;
+      overflow: hidden;
+    }
     .log-head { padding: 10px 10px 0; }
     .log-title { margin: 0; font-size: 14px; }
 
@@ -318,8 +343,8 @@
       overflow: auto;
       padding: 10px;
       border-radius: 8px;
-      background: #101723;
-      color: #d9f7e8;
+      background: #111827;
+      color: #d7fbe8;
       font: 12px/1.5 Consolas, "Courier New", monospace;
       white-space: pre-wrap;
     }
@@ -331,12 +356,14 @@
       gap: 8px;
     }
 
-    @media (max-width: 820px) {
+    @media (max-width: 620px) {
       body { min-width: 0; }
       .shell { padding: 8px; }
-      .hero-stats, .grid-two, .grid-three, .grid-four, .mini-grid, .action-row, .action-row.dual {
+      .layout, .grid-two, .grid-three, .grid-four, .mini-grid, .action-row, .action-row.dual {
         grid-template-columns: 1fr;
       }
+      .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .hero, .card-wide, .log-card { grid-column: auto; }
       .hero-top, .card-head, .log-head, .status-row, .dense-actions, .compact-bar {
         flex-direction: column;
         align-items: flex-start;
@@ -352,9 +379,12 @@
     <div class="layout">
       <section class="hero">
         <div class="hero-top">
-          <div class="hero-copy">
-            <h1 class="title">TEMU SPU 助手</h1>
-            <p class="subtitle">更紧凑地处理扫描、下架、上架、属性拒绝与属性补全。</p>
+          <div class="brand">
+            <img class="app-icon" src="icons/icon-48.png" alt="">
+            <div class="hero-copy">
+              <h1 class="title">TEMU SPU 助手</h1>
+              <p class="subtitle">扫描、下架、上架、属性处理和导出集中操作。</p>
+            </div>
           </div>
           <div class="toolbar">
             <button id="refreshBtn" class="btn-secondary">刷新界面</button>
@@ -384,7 +414,7 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card card-wide">
         <div class="card-head">
           <div>
             <h2 class="card-title">扫描违规商品</h2>
